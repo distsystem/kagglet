@@ -1,0 +1,33 @@
+[workspace]
+authors = ["cmriat"]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+name = "kagglet"
+
+[dependencies]
+python = ">=3.12"
+pydantic = ">=2"
+
+[pypi-dependencies]
+kagglet = { path = ".", editable = true }
+
+[feature.dev.pypi-dependencies]
+ruff = "*"
+pytest = "*"
+
+[feature.all.pypi-dependencies]
+ipython = "*"
+jupyter-client = "*"
+ipykernel = "*"
+requests = "*"
+cryptography = "*"
+pygit2 = "*"
+nvidia-ml-py = "*"
+
+[environments]
+default = { features = ["all"] }
+dev = { features = ["all", "dev"] }
+
+[tasks]
+lint = "ruff check ."
+fmt = "ruff format ."

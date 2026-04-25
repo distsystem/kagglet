@@ -1,0 +1,41 @@
+[project]
+name = "kagglet"
+version = "0.1.0"
+description = "Automation toolkit for Kaggle: model artifacts, notebook push DAG, cell relay, SSE log streaming."
+requires-python = ">=3.12"
+dependencies = [
+    "kaggle",
+    "kagglesdk",
+    "jupytext",
+    "nbformat",
+    "zstandard",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+relay = ["ipython", "jupyter-client", "ipykernel"]
+stream = ["requests", "cryptography"]
+git = ["pygit2"]
+gpu = ["nvidia-ml-py"]
+dev = ["ruff", "pytest"]
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kagglet"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["I", "B", "F401", "E722", "ARG", "TC004", "UP"]
+ignore = ["B006"]
+
+[tool.ruff.lint.isort]
+length-sort = true
+length-sort-straight = true
+combine-as-imports = true
