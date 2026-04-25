@@ -10,7 +10,11 @@ dependencies = [
     "nbformat",
     "zstandard",
     "pydantic>=2",
+    "pydantic-settings>=2.2",
 ]
+
+[project.scripts]
+kagglet = "kagglet.cli:main"
 
 [project.optional-dependencies]
 relay = ["ipython", "jupyter-client", "ipykernel"]

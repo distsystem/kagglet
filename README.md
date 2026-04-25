@@ -92,3 +92,15 @@ Or with pixi:
 ```bash
 pixi add --pypi kagglet
 ```
+
+## Examples
+
+Runnable examples live under [`examples/`](examples/). Each one is a directory
+with `notebook.toml` (slug + title) and one or more percent-format `.py` sources;
+push via:
+
+```bash
+pixi run kagglet push examples/hello --poll
+```
+
+Start with [`examples/hello/`](examples/hello/) — the smallest end-to-end push.

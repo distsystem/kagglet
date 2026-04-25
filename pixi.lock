@@ -29,7 +29,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.2-h35e630c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pydantic-2.13.3-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pydantic-core-2.46.3-py314h2e6c369_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pydantic-settings-2.14.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.14.4-habeac84_100_cp314.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/python-dotenv-1.2.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.14-8_cp314.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.3-h853b02a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
@@ -128,7 +130,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.2-h35e630c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pydantic-2.13.3-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pydantic-core-2.46.3-py314h2e6c369_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pydantic-settings-2.14.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.14.4-habeac84_100_cp314.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/python-dotenv-1.2.2-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.14-8_cp314.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.3-h853b02a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h366c992_103.conda
@@ -692,7 +696,7 @@ packages:
 - pypi: ./
   name: kagglet
   version: 0.1.0
-  sha256: d4fae03978608b831d6b71d0823ffdf4bf60a82c992294f654e338ceb39ce194
+  sha256: b8fea15c093d0efdc7f95023638892efebb49ee54d99a416313df7810e5cedb0
   requires_dist:
   - kaggle
   - kagglesdk
@@ -700,6 +704,7 @@ packages:
   - nbformat
   - zstandard
   - pydantic>=2
+  - pydantic-settings>=2.2
   - ipython ; extra == 'relay'
   - jupyter-client ; extra == 'relay'
   - ipykernel ; extra == 'relay'
@@ -1098,6 +1103,20 @@ packages:
   - pkg:pypi/pydantic-core?source=hash-mapping
   size: 1908522
   timestamp: 1776704321819
+- conda: https://conda.anaconda.org/conda-forge/noarch/pydantic-settings-2.14.0-pyhd8ed1ab_0.conda
+  sha256: ee52c2b651493bbebfe7c38548113c5c4ce0ada0c65ea6f30ac21d321fee5370
+  md5: 0552800b10a426db8f5068d6e5adcf54
+  depends:
+  - pydantic >=2.7.0
+  - python >=3.10
+  - python-dotenv >=0.21.0
+  - typing-inspection >=0.4.0
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/pydantic-settings?source=compressed-mapping
+  size: 51252
+  timestamp: 1776695131861
 - pypi: https://files.pythonhosted.org/packages/e5/8d/35f6096c42caefb715ca29e991279b493275c0051a3c83081099644d3f4a/pygit2-1.19.2-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl
   name: pygit2
   version: 1.19.2
@@ -1167,6 +1186,17 @@ packages:
   requires_dist:
   - six>=1.5
   requires_python: '>=2.7,!=3.0.*,!=3.1.*,!=3.2.*'
+- conda: https://conda.anaconda.org/conda-forge/noarch/python-dotenv-1.2.2-pyhcf101f3_0.conda
+  sha256: 74e417a768f59f02a242c25e7db0aa796627b5bc8c818863b57786072aeb85e5
+  md5: 130584ad9f3a513cdd71b1fdc1244e9c
+  depends:
+  - python >=3.10
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/python-dotenv?source=hash-mapping
+  size: 27848
+  timestamp: 1772388605021
 - pypi: https://files.pythonhosted.org/packages/a4/62/02da182e544a51a5c3ccf4b03ab79df279f9c60c5e82d5e8bec7ca26ac11/python_slugify-8.0.4-py2.py3-none-any.whl
   name: python-slugify
   version: 8.0.4
