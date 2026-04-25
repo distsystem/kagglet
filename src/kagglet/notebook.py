@@ -1,4 +1,4 @@
-"""Kaggle notebook push DAG.
+"""KaggleNotebook: notebook push DAG workflow.
 
 `KaggleNotebook` models a notebook kernel with:
   * source files (percent-format `.py`, concatenated and converted to `.ipynb`)
@@ -14,8 +14,10 @@ import pathlib
 
 from pydantic import Field, BaseModel, ConfigDict
 
-from kagglet.api import kaggle_api
 from kagglet.model import KaggleModel
+from kagglet.api.meta import KernelMeta
+from kagglet.api.client import kaggle_api
+from kagglet.api.kernels import push_kernel, fetch_kernel_logs, poll_kernel_terminal
 
 _JUPYTEXT_HEADER = """\
 # ---
@@ -57,32 +59,6 @@ def percent_to_notebook(source: str):
     import jupytext
 
     return _normalize_notebook_for_kaggle(jupytext.reads(_JUPYTEXT_HEADER + "\n" + source, fmt="py:percent"))
-
-
-class KernelMeta(BaseModel):
-    """`kernel-metadata.json` body for `kaggle kernels push` (snake_case schema)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    code_file: str = "notebook.ipynb"
-    language: str = "python"
-    kernel_type: str = "notebook"
-    is_private: str = "true"
-    enable_gpu: str
-    machine_shape: str | None
-    id: str
-    title: str
-    enable_internet: str
-    dataset_sources: list[str] = Field(default_factory=list)
-    competition_sources: list[str] = Field(default_factory=list)
-    kernel_sources: list[str] = Field(default_factory=list)
-    model_sources: list[str] | None = None
-
-    def to_json(self) -> str:
-        # Drop `model_sources` when unset so we match the historical layout
-        # (Kaggle accepts either, but the diff stays smaller).
-        exclude = {"model_sources"} if self.model_sources is None else set()
-        return self.model_dump_json(indent=2, exclude=exclude)
 
 
 class KaggleNotebook(BaseModel):
@@ -172,11 +148,6 @@ class KaggleNotebook(BaseModel):
 
     def push(self):
         """Build notebook from sources, upload as a new kernel version."""
-        import tempfile
-
-        import nbformat
-
-        api = kaggle_api()
         meta = self.metadata
         if self.inputs:
             model_sources = []
@@ -191,16 +162,7 @@ class KaggleNotebook(BaseModel):
         nb = percent_to_notebook(self._build_source())
         meta_json = meta.to_json()
         print(meta_json)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = pathlib.Path(tmp)
-            with (tmp_path / "notebook.ipynb").open("w", encoding="utf-8") as f:
-                nbformat.write(nb, f)
-            (tmp_path / "kernel-metadata.json").write_text(meta_json + "\n")
-            result = api.kernels_push(tmp)
-
-        if result.error:
-            raise RuntimeError(f"kernel push failed: {result.error}")
+        result = push_kernel(kaggle_api(), meta_json, nb)
         print(f"kernel version {result.versionNumber} pushed: {result.ref}")
 
     def _resolve_source(self, source: str | pathlib.Path) -> pathlib.Path:
@@ -219,28 +181,20 @@ class KaggleNotebook(BaseModel):
 
     def poll(self, interval: int = 10):
         """Block until kernel finishes, then print the downloaded `.log` files."""
-        import tempfile
-
         api = kaggle_api()
         t0 = time.monotonic()
-        while True:
-            resp = api.kernels_status(self.slug)
+
+        def tick(resp):
             elapsed = int(time.monotonic() - t0)
             mm, ss = divmod(elapsed, 60)
             print(f"\r\033[K{mm:02d}:{ss:02d}  {resp.status}", end="", flush=True)
 
-            status = str(resp.status).lower()
-            if "complete" in status or "error" in status or "cancel" in status:
-                print()
-                break
+        resp, status = poll_kernel_terminal(api, self.slug, interval=interval, on_tick=tick)
+        print()
 
-            time.sleep(interval)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            api.kernels_output(self.slug, tmp)
-            for log in sorted(pathlib.Path(tmp).glob("*.log")):
-                print(f"--- {log.name} ---")
-                print(log.read_text())
+        for name, content in fetch_kernel_logs(api, self.slug):
+            print(f"--- {name} ---")
+            print(content)
 
         if "error" in status or "cancel" in status:
             msg = resp.failure_message or resp.status
