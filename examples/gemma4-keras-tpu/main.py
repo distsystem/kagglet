@@ -1,4 +1,37 @@
 # ruff: noqa: E402
+# %% [markdown]
+# Kaggle's notebook VM has limited host memory, so we read the attached
+# `gemma-4-31b-it` safetensors index tensor by tensor, place each tensor onto a
+# 1-D JAX `model` mesh with `NamedSharding`, and keep all 60 layers resident in
+# TPU HBM before generation starts.
+#
+# Sharding layout:
+#
+# ```
+# q/gate/up       : P("model", None)
+# k/v sliding     : P("model", None)
+# k/v full        : replicated (4 KV heads cannot split over 8 chips)
+# o/down          : P(None, "model")
+# embedding       : P("model", None)
+# norm/scalars    : replicated
+# ```
+#
+# Default is one greedy token (`MAX_NEW_TOKENS=1`) so the run validates the
+# full 31B route quickly. Resident weights make extra tokens cheap.
+#
+# Notebook-runtime env overrides (set inside the Kaggle notebook, not the local
+# push command — local env vars do not propagate to the kernel):
+#
+# ```
+# VALIDATE_ONLY=1     # validate config/index and skip generation
+# LAYER_LIMIT=2       # debug the first N layers; output is not meaningful
+# MAX_NEW_TOKENS=2    # generate more greedy tokens
+# PROMPT="..."        # replace the default text prompt
+# SHARD_WEIGHTS=0     # disable JAX NamedSharding for comparison/debugging
+# SHARD_EMBEDDING=0   # keep tied embedding replicated while sharding layers
+# PRINT_SHARDING=0    # silence the first-layer sharding summary
+# ```
+
 # %%
 import gc
 import os

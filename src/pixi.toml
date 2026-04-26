@@ -1,0 +1,24 @@
+[package]
+name = "kagglet"
+version = "0.1.0"
+description = "Automation toolkit for Kaggle: model artifacts, notebook push DAG, cell relay, SSE log streaming."
+
+[package.build]
+backend = { name = "pixi-build-python", version = "*" }
+
+[package.build.config]
+noarch = true
+
+[package.host-dependencies]
+python = ">=3.12"
+hatchling = "*"
+
+[package.run-dependencies]
+python = ">=3.12"
+kaggle = "*"
+kagglesdk = "*"
+jupytext = "*"
+nbformat = "*"
+zstandard = "*"
+pydantic = ">=2"
+pydantic-settings = ">=2.2"

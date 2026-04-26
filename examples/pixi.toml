@@ -1,0 +1,26 @@
+[workspace]
+channels = ["conda-forge"]
+name = "kagglet-examples"
+platforms = ["linux-64"]
+preview = ["pixi-build"]
+version = "0.1.0"
+
+[dependencies]
+python = "=3.12"
+kagglet = { path = "../src" }
+# kagglet = { git = "https://github.com/cmriat/kagglet", subdirectory = "src" }
+
+[tasks.hello]
+cmd = "kagglet push hello --poll"
+
+[tasks.hello-show]
+cmd = "kagglet show hello"
+
+[tasks.gemma4-keras-tpu]
+cmd = "kagglet push gemma4-keras-tpu --poll"
+
+[tasks.gemma4-keras-tpu-show]
+cmd = "kagglet show gemma4-keras-tpu"
+
+[tasks.whoami]
+cmd = "kagglet whoami"

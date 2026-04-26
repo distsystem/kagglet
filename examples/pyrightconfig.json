@@ -1,0 +1,6 @@
+{
+  "venvPath": ".pixi",
+  "venv": "envs/default",
+  "include": ["**/*.py"],
+  "reportMissingImports": "warning"
+}
