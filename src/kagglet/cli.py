@@ -7,6 +7,7 @@ Each example/project directory contains:
 Subcommands:
   * `push <dir> [--poll]` — build + push the notebook; optionally poll until done
   * `show <dir>` — print the derived `kernel-metadata.json` without pushing
+  * `whoami` — print the authenticated Kaggle account
 """
 
 import argparse
@@ -31,6 +32,7 @@ class NotebookSettings(BaseSettings):
     slug: str
     title: str
     sources: list[str] = Field(default_factory=list)
+    model_sources: list[str] = Field(default_factory=list)
     internet: bool = True
     competition: str = ""
     accelerator: str = ""
@@ -53,6 +55,7 @@ class NotebookSettings(BaseSettings):
             title=self.title,
             sources=sources,
             sources_dir=dir,
+            model_sources=self.model_sources,
             internet=self.internet,
             competition=self.competition,
             accelerator=self.accelerator,
@@ -76,6 +79,12 @@ def show_command(args):
     print(nb.metadata.to_json())
 
 
+def whoami_command(_args):
+    api = kaggle_api()
+    print(f"username: {api.config_values.get('username', '')}")
+    print(f"auth_method: {api.config_values.get('auth_method', '')}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="kagglet")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -88,6 +97,9 @@ def main(argv: list[str] | None = None) -> None:
     p_show = sub.add_parser("show", help="print derived kernel-metadata.json without pushing")
     p_show.add_argument("dir")
     p_show.set_defaults(func=show_command)
+
+    p_whoami = sub.add_parser("whoami", help="print the authenticated Kaggle account")
+    p_whoami.set_defaults(func=whoami_command)
 
     args = parser.parse_args(argv)
     args.func(args)

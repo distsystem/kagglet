@@ -45,6 +45,7 @@ class KernelMeta(BaseModel):
     kernel_type: str = "notebook"
     is_private: str = "true"
     enable_gpu: str
+    enable_tpu: str = "false"
     machine_shape: str | None
     id: str
     title: str

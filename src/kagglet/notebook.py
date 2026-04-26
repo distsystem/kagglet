@@ -74,6 +74,7 @@ class KaggleNotebook(BaseModel):
     title: str
     sources: list[str] = Field(default_factory=list, repr=False)
     sources_dir: pathlib.Path | None = Field(default=None, repr=False)
+    model_sources: list[str] = Field(default_factory=list)
     internet: bool = True
     competition: str = ""
     accelerator: str = ""
@@ -97,13 +98,16 @@ class KaggleNotebook(BaseModel):
 
     @property
     def metadata(self) -> KernelMeta:
+        use_tpu = self.accelerator.lower().startswith("tpu")
         return KernelMeta(
             id=self.slug,
             title=self.title,
-            enable_gpu=str(bool(self.accelerator)).lower(),
+            enable_gpu=str(bool(self.accelerator) and not use_tpu).lower(),
+            enable_tpu=str(use_tpu).lower(),
             machine_shape=self.accelerator or None,
             enable_internet=str(self.internet).lower(),
             competition_sources=[self.competition] if self.competition else [],
+            model_sources=self.model_sources or None,
         )
 
     def plan(self, force: bool = False, timeout: int = 600) -> list["KaggleNotebook"]:
@@ -149,14 +153,15 @@ class KaggleNotebook(BaseModel):
     def push(self):
         """Build notebook from sources, upload as a new kernel version."""
         meta = self.metadata
+        model_sources = list(self.model_sources)
         if self.inputs:
-            model_sources = []
             for m in self.inputs:
                 if m.version <= 0:
                     m.fetch()
                 model_sources.append(f"{m.slug}/{m.version}")
                 if not m.wait_ready(timeout=600):
                     raise RuntimeError(f"timeout waiting for {m.slug}/{m.version}")
+        if model_sources:
             meta.model_sources = model_sources
 
         nb = percent_to_notebook(self._build_source())

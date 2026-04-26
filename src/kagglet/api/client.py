@@ -15,11 +15,13 @@ _api = None
 
 def kaggle_api():
     """Return a cached, authenticated `KaggleApi` singleton."""
+    os.environ.setdefault("KAGGLE_ENABLE_OAUTH", "1")
+
     from kaggle.api.kaggle_api_extended import KaggleApi
 
     global _api
     if _api is None:
-        _api = KaggleApi()
+        _api = KaggleApi(enable_oauth=True)
         _api.authenticate()
     return _api
 
