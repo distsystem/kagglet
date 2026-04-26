@@ -4,13 +4,14 @@ Smallest possible kagglet usage.
 
 ```
 hello/
-├── notebook.toml   # slug, title, ...
+├── notebook.yaml   # kernel name, optional owner/title, ...
 ├── bootstrap.py    # cell 1 (markdown header + env probe)
 └── main.py         # cell 2-3 (hello + tiny computation)
 ```
 
-`notebook.toml` is loaded by `pydantic-settings`; `*.py` files are auto-discovered
-in alphabetical order (override with `sources = [...]` in the TOML).
+`notebook.yaml` is loaded by `pydantic-settings`; `kernel` describes the Kaggle
+kernel, while `*.py` files are auto-discovered in alphabetical order (override
+with `sources: [...]` in YAML).
 
 ## Run
 
@@ -20,9 +21,9 @@ pixi run kagglet push examples/hello --poll
 
 `--poll` blocks until the kernel finishes and prints the downloaded `.log` files.
 
-The `slug` in `notebook.toml` is just `"kagglet-hello"` — the CLI prepends your
-kaggle username (read from `$KAGGLE_USERNAME` or `~/.kaggle/kaggle.json`).
-Use a fully qualified slug like `"alice/kagglet-hello"` only when sharing.
+The `kernel.name` in `notebook.yaml` is `"kagglet-hello"`; the CLI fills
+`kernel.owner` from your active Kaggle account. Set `kernel.owner` only when
+pushing to a different owner.
 
 ## Inspect without pushing
 

@@ -2,7 +2,8 @@
 
 Each example is a directory pushed via `kagglet push <dir>`. The directory holds:
 
-- `notebook.toml` — slug + title (required) and optional kernel settings
+- `notebook.yaml` — `kernel.name` (required), optional `kernel.owner` /
+  `kernel.title`, optional kernel settings, and optional source ordering
 - one or more percent-format `.py` source files
 
 ## Prereqs
@@ -12,9 +13,9 @@ Each example is a directory pushed via `kagglet push <dir>`. The directory holds
    `KAGGLE_ENABLE_OAUTH=1 kaggle auth login`.
 3. Confirm the active Kaggle user with `pixi run kagglet whoami`.
 
-Each example's `slug` is just the kernel name (e.g. `"kagglet-hello"`); the CLI
-prepends your active Kaggle username automatically. Use `"alice/kagglet-hello"`
-only when explicitly pushing to a different owner.
+Each example omits `kernel.owner`; the CLI fills it from your active Kaggle
+account. Set `kernel.owner: alice` only when explicitly pushing to a different
+owner.
 
 ## Run
 

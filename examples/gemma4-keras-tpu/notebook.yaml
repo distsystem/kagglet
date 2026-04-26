@@ -1,0 +1,9 @@
+kernel:
+  name: kagglet-gemma4-31b-sharded-tpu
+  model_sources:
+    - google/gemma-4/transformers/gemma-4-31b-it/1
+  internet: true
+  accelerator: TpuV5E8
+sources:
+  - bootstrap.py
+  - main.py

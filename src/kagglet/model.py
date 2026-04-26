@@ -9,8 +9,9 @@ import time
 import pathlib
 from typing import ClassVar
 
-from pydantic import Field, BaseModel, ConfigDict
+import pydantic
 
+from kagglet.asset import KaggleAsset
 from kagglet.api.client import kaggle_api
 from kagglet.api.models import (
     poll_ready,
@@ -25,7 +26,7 @@ from kagglet.api.models import (
 KAGGLE_INPUT = pathlib.Path("/kaggle/input/models")
 
 
-class KaggleModel(BaseModel):
+class KaggleModel(KaggleAsset):
     """Versioned Kaggle model artifact.
 
     Subclasses set `MARKER` (the filename indicating the artifact is installed)
@@ -33,32 +34,16 @@ class KaggleModel(BaseModel):
     upload represents; `needs_update()` compares against `expected_notes()`.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
-    owner: str
-    name: str
     framework: str = "other"
     variation: str = "default"
-    version: int = Field(default=0, repr=False)
-    notes: dict = Field(default_factory=dict, repr=False)
-    expect: dict = Field(default_factory=dict, repr=False)
+    notes: dict = pydantic.Field(default_factory=dict, repr=False)
+    expect: dict = pydantic.Field(default_factory=dict, repr=False)
 
     MARKER: ClassVar[str] = ""
-
-    # Identity-based hash/eq so instances stay usable as dict/set keys even
-    # though the model is mutable.
-    __hash__ = object.__hash__
-
-    def __eq__(self, other: object) -> bool:
-        return self is other
 
     @property
     def slug(self) -> str:
         return f"{self.owner}/{self.name}/{self.framework}/{self.variation}"
-
-    @property
-    def ref(self) -> str:
-        return f"{self.owner}/{self.name}"
 
     def find(self) -> pathlib.Path:
         """Locate the artifact marker under KAGGLE_INPUT (raises if missing)."""

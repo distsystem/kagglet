@@ -8,8 +8,10 @@ cell execution to your own runtime.
 
 | Module | Purpose |
 |--------|---------|
+| `kagglet.asset`    | `KaggleAsset` — shared `{owner}/{name}` identity for Kaggle resources |
+| `kagglet.kernel`   | `KaggleKernel` — Kaggle kernel metadata (`title`, `accelerator`, dataset/model sources, internet) |
 | `kagglet.model`    | `KaggleModel` — versioned artifact with `fetch` / `upload` / `wait_ready` / `needs_update` on top of notes-based cache invalidation |
-| `kagglet.notebook` | `KaggleNotebook` — notebook kernel with deps DAG (`plan` / `push` / `poll`), converts percent-format `.py` sources to `.ipynb` |
+| `kagglet.notebook` | `NotebookProject` — local notebook orchestration with `sources`, deps DAG (`plan` / `push` / `poll`), and percent-format `.py` conversion |
 | `kagglet.tar`      | `TarExtractor` — 4 interchangeable tar / tar.zst extraction strategies |
 | `kagglet.api`      | `kaggle_api()` cached singleton + `parallel_kaggle_uploads()` context manager (monkey-patches the kaggle client to upload model files concurrently) |
 | `kagglet.relay`    | `RelaySession` — hijacks IPython `run_cell` on the Kaggle kernel and forwards every cell to an external Jupyter kernel you control |
@@ -22,7 +24,7 @@ cell execution to your own runtime.
 ```python
 from pathlib import Path
 
-from kagglet import KaggleModel, KaggleNotebook
+from kagglet import KaggleKernel, KaggleModel, NotebookProject
 
 class EnvArtifact(KaggleModel):
     MARKER = "env.tar.zst"
@@ -36,9 +38,8 @@ class EnvArtifact(KaggleModel):
 
 ENV = EnvArtifact(owner="your-owner", name="my-env")
 
-NB = KaggleNotebook(
-    slug="your-owner/my-nb",
-    title="My Notebook",
+NB = NotebookProject(
+    kernel=KaggleKernel(owner="your-owner", name="my-nb"),
     sources=["bootstrap.py", "main.py"],
     sources_dir=Path(__file__).resolve().parent,
     deps=[ENV],
@@ -96,8 +97,8 @@ pixi add --pypi kagglet
 ## Examples
 
 Runnable examples live under [`examples/`](examples/). Each one is a directory
-with `notebook.toml` (slug + title) and one or more percent-format `.py` sources;
-push via:
+with `notebook.yaml` (`kernel.name`, optional `kernel.owner` / `kernel.title`)
+and one or more percent-format `.py` sources; push via:
 
 ```bash
 pixi run kagglet push examples/hello --poll

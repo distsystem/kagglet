@@ -1,82 +1,97 @@
-"""kagglet CLI: push a directory described by `notebook.toml`.
+"""kagglet CLI: push a directory described by `notebook.yaml`.
 
 Each example/project directory contains:
-  * `notebook.toml` — slug, title, optional fields (sources, internet, ...)
+  * `notebook.yaml` — kernel metadata plus optional project fields
   * one or more percent-format `.py` files (auto-discovered if `sources` is omitted)
 
 Subcommands:
-  * `push <dir> [--poll]` — build + push the notebook; optionally poll until done
-  * `show <dir>` — print the derived `kernel-metadata.json` without pushing
-  * `whoami` — print the authenticated Kaggle account
+  * `push <dir> [--poll]` - build + push the notebook; optionally poll until done
+  * `show <dir>` - print the derived `kernel-metadata.json` without pushing
+  * `whoami` - print the authenticated Kaggle account
 """
 
-import argparse
+from typing import ClassVar
 from pathlib import Path
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
+import pydantic
+from pydantic_settings import (
+    CliApp,
+    BaseSettings,
+    CliSubCommand,
+    CliPositionalArg,
+    SettingsConfigDict,
+    YamlConfigSettingsSource,
+)
 
-from kagglet.notebook import KaggleNotebook
+from kagglet.notebook import NotebookProject
 from kagglet.api.client import kaggle_api
 
 
-class NotebookSettings(BaseSettings):
-    """Schema for `<dir>/notebook.toml`.
+class NotebookProjectSettings(NotebookProject, BaseSettings):
+    """Schema for `<dir>/notebook.yaml`.
 
-    Required: `slug`, `title`. Other fields default to `KaggleNotebook` defaults;
+    Required: `kernel.name`. `kernel.owner` defaults to the active Kaggle
+    account, and `kernel.title` defaults from `kernel.name`;
     `sources` defaults to all `*.py` files in the directory (sorted) when omitted.
     """
 
     model_config = SettingsConfigDict(extra="forbid")
 
-    slug: str
-    title: str
-    sources: list[str] = Field(default_factory=list)
-    model_sources: list[str] = Field(default_factory=list)
-    internet: bool = True
-    competition: str = ""
-    accelerator: str = ""
+    _sources_dir: ClassVar[Path]
+    _yaml_path: ClassVar[Path]
 
     @classmethod
-    def load(cls, dir: Path) -> "NotebookSettings":
-        toml_path = dir / "notebook.toml"
-        if not toml_path.exists():
-            raise FileNotFoundError(f"missing {toml_path}")
-        source = TomlConfigSettingsSource(cls, toml_file=toml_path)
-        return cls.model_validate(source())
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        yaml_settings = YamlConfigSettingsSource(settings_cls, yaml_file=cls._yaml_path)
+        return init_settings, env_settings, dotenv_settings, yaml_settings, file_secret_settings
 
-    def to_notebook(self, dir: Path) -> KaggleNotebook:
-        sources = self.sources or sorted(p.name for p in dir.glob("*.py"))
-        if not sources:
-            raise ValueError(f"no .py sources found in {dir}")
-        slug = self.slug if "/" in self.slug else f"{kaggle_api().config_values['username']}/{self.slug}"
-        return KaggleNotebook(
-            slug=slug,
-            title=self.title,
-            sources=sources,
-            sources_dir=dir,
-            model_sources=self.model_sources,
-            internet=self.internet,
-            competition=self.competition,
-            accelerator=self.accelerator,
-        )
+    @classmethod
+    def load(cls, dir: Path) -> "NotebookProjectSettings":
+        yaml_path = dir / "notebook.yaml"
+        if not yaml_path.exists():
+            raise FileNotFoundError(f"missing {yaml_path}")
+
+        class BoundNotebookProjectSettings(cls):
+            _sources_dir = dir
+            _yaml_path = yaml_path
+
+        return BoundNotebookProjectSettings()
+
+    @pydantic.model_validator(mode="after")
+    def apply_cli_defaults(self):
+        if not self.kernel.owner:
+            self.kernel.owner = kaggle_api().config_values["username"]
+        if self.sources_dir is None:
+            self.sources_dir = self._sources_dir
+        if not self.sources:
+            self.sources = sorted(p.name for p in self._sources_dir.glob("*.py"))
+        if not self.sources:
+            raise ValueError(f"no .py sources found in {self._sources_dir}")
+        return self
 
 
-def _load(dir_arg: str) -> KaggleNotebook:
+def _load(dir_arg: str) -> NotebookProject:
     dir = Path(dir_arg).resolve()
-    return NotebookSettings.load(dir).to_notebook(dir)
+    return NotebookProjectSettings.load(dir)
 
 
 def push_command(args):
-    nb = _load(args.dir)
-    nb.push()
+    project = _load(args.dir)
+    project.push()
     if args.poll:
-        nb.poll()
+        project.poll()
 
 
 def show_command(args):
-    nb = _load(args.dir)
-    print(nb.metadata.to_json())
+    project = _load(args.dir)
+    print(project.metadata.to_json())
 
 
 def whoami_command(_args):
@@ -85,24 +100,44 @@ def whoami_command(_args):
     print(f"auth_method: {api.config_values.get('auth_method', '')}")
 
 
+class PushCommand(pydantic.BaseModel):
+    dir: CliPositionalArg[str]
+    poll: bool = False
+
+    def cli_cmd(self) -> None:
+        push_command(self)
+
+
+class ShowCommand(pydantic.BaseModel):
+    dir: CliPositionalArg[str]
+
+    def cli_cmd(self) -> None:
+        show_command(self)
+
+
+class WhoamiCommand(pydantic.BaseModel):
+    def cli_cmd(self) -> None:
+        whoami_command(self)
+
+
+class KaggletCli(BaseSettings):
+    model_config = SettingsConfigDict(
+        cli_prog_name="kagglet",
+        cli_kebab_case=True,
+        cli_implicit_flags=True,
+        cli_enforce_required=True,
+    )
+
+    push: CliSubCommand[PushCommand]
+    show: CliSubCommand[ShowCommand]
+    whoami: CliSubCommand[WhoamiCommand]
+
+    def cli_cmd(self) -> None:
+        CliApp.run_subcommand(self)
+
+
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="kagglet")
-    sub = parser.add_subparsers(dest="cmd", required=True)
-
-    p_push = sub.add_parser("push", help="push notebook from <dir>/notebook.toml")
-    p_push.add_argument("dir")
-    p_push.add_argument("--poll", action="store_true", help="block until kernel finishes + print logs")
-    p_push.set_defaults(func=push_command)
-
-    p_show = sub.add_parser("show", help="print derived kernel-metadata.json without pushing")
-    p_show.add_argument("dir")
-    p_show.set_defaults(func=show_command)
-
-    p_whoami = sub.add_parser("whoami", help="print the authenticated Kaggle account")
-    p_whoami.set_defaults(func=whoami_command)
-
-    args = parser.parse_args(argv)
-    args.func(args)
+    CliApp.run(KaggletCli, cli_args=argv)
 
 
 if __name__ == "__main__":

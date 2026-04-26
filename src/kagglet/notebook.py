@@ -1,20 +1,22 @@
-"""KaggleNotebook: notebook push DAG workflow.
+"""Local notebook project orchestration.
 
-`KaggleNotebook` models a notebook kernel with:
+`NotebookProject` models local kagglet workflow state with:
   * source files (percent-format `.py`, concatenated and converted to `.ipynb`)
   * optional `output` model (result uploaded back as a model artifact)
-  * `deps` — other `KaggleNotebook` or `KaggleModel` instances required as inputs
+  * `deps` — other Kaggle assets required as inputs
 
-`plan()` walks the DAG and returns only the notebooks whose outputs are stale.
+`plan()` walks the DAG and returns only the projects whose outputs are stale.
 `push()` uploads the current notebook. `poll()` waits for completion + prints logs.
 """
 
 import time
 import pathlib
 
-from pydantic import Field, BaseModel, ConfigDict
+import pydantic
 
 from kagglet.model import KaggleModel
+from kagglet.kernel import KaggleKernel
+from kagglet.dataset import KaggleDataset
 from kagglet.api.meta import KernelMeta
 from kagglet.api.client import kaggle_api
 from kagglet.api.kernels import push_kernel, fetch_kernel_logs, poll_kernel_terminal
@@ -61,25 +63,20 @@ def percent_to_notebook(source: str):
     return _normalize_notebook_for_kaggle(jupytext.reads(_JUPYTEXT_HEADER + "\n" + source, fmt="py:percent"))
 
 
-class KaggleNotebook(BaseModel):
-    """Kaggle kernel spec.
+class NotebookProject(pydantic.BaseModel):
+    """Local notebook project spec.
 
     `sources` are paths to percent-format `.py` fragments concatenated to form
     the notebook. Paths are resolved against `sources_dir` if relative.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = pydantic.ConfigDict(extra="forbid")
 
-    slug: str
-    title: str
-    sources: list[str] = Field(default_factory=list, repr=False)
-    sources_dir: pathlib.Path | None = Field(default=None, repr=False)
-    model_sources: list[str] = Field(default_factory=list)
-    internet: bool = True
-    competition: str = ""
-    accelerator: str = ""
-    output: KaggleModel | None = Field(default=None, repr=False)
-    deps: list["KaggleNotebook | KaggleModel"] = Field(default_factory=list, repr=False)
+    kernel: KaggleKernel
+    sources: list[str] = pydantic.Field(default_factory=list, repr=False)
+    sources_dir: pathlib.Path | None = pydantic.Field(default=None, repr=False)
+    output: KaggleModel | None = pydantic.Field(default=None, repr=False)
+    deps: list["NotebookProject | KaggleModel | KaggleDataset"] = pydantic.Field(default_factory=list, repr=False)
 
     __hash__ = object.__hash__
 
@@ -90,31 +87,27 @@ class KaggleNotebook(BaseModel):
     def inputs(self) -> list[KaggleModel]:
         models = []
         for d in self.deps:
-            if isinstance(d, KaggleNotebook) and d.output:
+            if isinstance(d, NotebookProject) and d.output:
                 models.append(d.output)
             elif isinstance(d, KaggleModel):
                 models.append(d)
         return models
 
     @property
-    def metadata(self) -> KernelMeta:
-        use_tpu = self.accelerator.lower().startswith("tpu")
-        return KernelMeta(
-            id=self.slug,
-            title=self.title,
-            enable_gpu=str(bool(self.accelerator) and not use_tpu).lower(),
-            enable_tpu=str(use_tpu).lower(),
-            machine_shape=self.accelerator or None,
-            enable_internet=str(self.internet).lower(),
-            competition_sources=[self.competition] if self.competition else [],
-            model_sources=self.model_sources or None,
-        )
+    def datasets(self) -> list[KaggleDataset]:
+        return [d for d in self.deps if isinstance(d, KaggleDataset)]
 
-    def plan(self, force: bool = False, timeout: int = 600) -> list["KaggleNotebook"]:
+    @property
+    def metadata(self) -> KernelMeta:
+        meta = self.kernel.metadata
+        meta.dataset_sources = [*meta.dataset_sources, *(d.slug for d in self.datasets)]
+        return meta
+
+    def plan(self, force: bool = False, timeout: int = 600) -> list["NotebookProject"]:
         """Walk deps, upload any stale KaggleModel, return notebooks whose outputs need rebuild."""
         import graphlib
 
-        graph: dict[KaggleNotebook, set[KaggleNotebook]] = {}
+        graph: dict[NotebookProject, set[NotebookProject]] = {}
         model_deps: set[KaggleModel] = set()
         stack = [self]
         while stack:
@@ -123,7 +116,7 @@ class KaggleNotebook(BaseModel):
                 continue
             nb_deps = set()
             for d in nb.deps:
-                if isinstance(d, KaggleNotebook):
+                if isinstance(d, NotebookProject):
                     nb_deps.add(d)
                 elif isinstance(d, KaggleModel):
                     model_deps.add(d)
@@ -139,7 +132,7 @@ class KaggleNotebook(BaseModel):
             if not m.wait_ready(timeout=timeout):
                 raise RuntimeError(f"timeout waiting for {m.slug}/{m.version}")
 
-        pending: list[KaggleNotebook] = []
+        pending: list[NotebookProject] = []
         for nb in graphlib.TopologicalSorter(graph).static_order():
             if nb.output:
                 nb.output.fetch()
@@ -153,7 +146,7 @@ class KaggleNotebook(BaseModel):
     def push(self):
         """Build notebook from sources, upload as a new kernel version."""
         meta = self.metadata
-        model_sources = list(self.model_sources)
+        model_sources = list(meta.model_sources or [])
         if self.inputs:
             for m in self.inputs:
                 if m.version <= 0:
@@ -177,7 +170,7 @@ class KaggleNotebook(BaseModel):
         if self.sources_dir is None:
             raise ValueError(
                 f"sources_dir not set but source {source!r} is relative; "
-                "pass absolute paths or set KaggleNotebook(sources_dir=...)"
+                "pass absolute paths or set NotebookProject(sources_dir=...)"
             )
         return self.sources_dir / path
 
@@ -194,16 +187,16 @@ class KaggleNotebook(BaseModel):
             mm, ss = divmod(elapsed, 60)
             print(f"\r\033[K{mm:02d}:{ss:02d}  {resp.status}", end="", flush=True)
 
-        resp, status = poll_kernel_terminal(api, self.slug, interval=interval, on_tick=tick)
+        resp, status = poll_kernel_terminal(api, self.kernel.slug, interval=interval, on_tick=tick)
         print()
 
-        for name, content in fetch_kernel_logs(api, self.slug):
+        for name, content in fetch_kernel_logs(api, self.kernel.slug):
             print(f"--- {name} ---")
             print(content)
 
         if "error" in status or "cancel" in status:
             msg = resp.failure_message or resp.status
-            raise RuntimeError(f"kernel {self.slug} failed: {msg}")
+            raise RuntimeError(f"kernel {self.kernel.slug} failed: {msg}")
 
 
-KaggleNotebook.model_rebuild()
+NotebookProject.model_rebuild()
