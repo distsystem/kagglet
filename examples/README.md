@@ -3,8 +3,10 @@
 A standalone pixi workspace that pulls `kagglet` from `../src` and exposes one
 task per example. Each example is a directory with:
 
-- `notebook.yaml` — `kernel.name` (required), optional `kernel.owner` /
-  `kernel.title`, optional kernel settings, and optional source ordering
+- `notebook.yaml` — `kernel.name` and `sources` are required; optional
+  `kernel.owner` / `kernel.title` and other kernel settings. `sources` accepts
+  explicit paths (e.g. `[bootstrap.py, main.py]`) or globs (e.g. `["*.py"]`,
+  expanded against the example directory and sorted)
 - one or more percent-format `.py` source files
 
 ## Prereqs

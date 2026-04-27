@@ -1,7 +1,7 @@
 [project]
 name = "kagglet"
 version = "0.1.0"
-description = "Automation toolkit for Kaggle: model artifacts, notebook push DAG, cell relay, SSE log streaming."
+description = "Automation toolkit for Kaggle: model artifacts, notebook push DAG, SSE log streaming."
 requires-python = ">=3.12"
 dependencies = []
 

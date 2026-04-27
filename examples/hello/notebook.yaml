@@ -1,2 +1,4 @@
 kernel:
   name: kagglet-hello
+sources:
+  - "*.py"

@@ -1,8 +1,9 @@
 """kagglet CLI: push a directory described by `notebook.yaml`.
 
 Each example/project directory contains:
-  * `notebook.yaml` — kernel metadata plus optional project fields
-  * one or more percent-format `.py` files (auto-discovered if `sources` is omitted)
+  * `notebook.yaml` — kernel metadata, plus `sources` (explicit list or globs
+    like `["*.py"]`) and optional project fields
+  * one or more percent-format `.py` files referenced by `sources`
 
 Subcommands:
   * `push <dir> [--poll]` - build + push the notebook; optionally poll until done
@@ -23,16 +24,16 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+from kagglet.api import kaggle
 from kagglet.notebook import NotebookProject
-from kagglet.api.client import kaggle_api
 
 
 class NotebookProjectSettings(NotebookProject, BaseSettings):
     """Schema for `<dir>/notebook.yaml`.
 
-    Required: `kernel.name`. `kernel.owner` defaults to the active Kaggle
-    account, and `kernel.title` defaults from `kernel.name`;
-    `sources` defaults to all `*.py` files in the directory (sorted) when omitted.
+    Required: `kernel.name` and `sources` (list of percent-format `.py` paths
+    or globs like `["*.py"]`). `kernel.owner` defaults to the active Kaggle
+    account, and `kernel.title` defaults from `kernel.name`.
     """
 
     model_config = SettingsConfigDict(extra="forbid")
@@ -67,13 +68,14 @@ class NotebookProjectSettings(NotebookProject, BaseSettings):
     @pydantic.model_validator(mode="after")
     def apply_cli_defaults(self):
         if not self.kernel.owner:
-            self.kernel.owner = kaggle_api().config_values["username"]
+            self.kernel.owner = kaggle().username
         if self.sources_dir is None:
             self.sources_dir = self._sources_dir
         if not self.sources:
-            self.sources = sorted(p.name for p in self._sources_dir.glob("*.py"))
-        if not self.sources:
-            raise ValueError(f"no .py sources found in {self._sources_dir}")
+            raise ValueError(
+                f"{self._yaml_path}: 'sources' is required; "
+                "use ['*.py'] to include every .py file in the directory"
+            )
         return self
 
 
@@ -90,14 +92,17 @@ def push_command(args):
 
 
 def show_command(args):
+    import json
+
     project = _load(args.dir)
-    print(project.metadata.to_json())
+    request = project.save_request()
+    print(json.dumps(request.to_field_map(), indent=2, default=str))
 
 
 def whoami_command(_args):
-    api = kaggle_api()
-    print(f"username: {api.config_values.get('username', '')}")
-    print(f"auth_method: {api.config_values.get('auth_method', '')}")
+    api = kaggle()
+    print(f"username: {api.username}")
+    print(f"auth_method: {api.auth_method}")
 
 
 class PushCommand(pydantic.BaseModel):

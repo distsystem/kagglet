@@ -8,16 +8,12 @@ cell execution to your own runtime.
 
 | Module | Purpose |
 |--------|---------|
-| `kagglet.asset`    | `KaggleAsset` — shared `{owner}/{name}` identity for Kaggle resources |
-| `kagglet.kernel`   | `KaggleKernel` — Kaggle kernel metadata (`title`, `accelerator`, dataset/model sources, internet) |
-| `kagglet.model`    | `KaggleModel` — versioned artifact with `fetch` / `upload` / `wait_ready` / `needs_update` on top of notes-based cache invalidation |
+| `kagglet.assets`   | `KaggleAsset` (`{owner}/{name}` identity) and the resource subclasses: `KaggleDataset`, `KaggleKernel` (with `Accelerator`), `KaggleModel` (versioned artifact with `fetch` / `upload` / `wait_ready` / `needs_update` on top of notes-based cache invalidation) |
 | `kagglet.notebook` | `NotebookProject` — local notebook orchestration with `sources`, deps DAG (`plan` / `push` / `poll`), and percent-format `.py` conversion |
-| `kagglet.tar`      | `TarExtractor` — 4 interchangeable tar / tar.zst extraction strategies |
-| `kagglet.api`      | `kaggle_api()` cached singleton + `parallel_kaggle_uploads()` context manager (monkey-patches the kaggle client to upload model files concurrently) |
-| `kagglet.relay`    | `RelaySession` — hijacks IPython `run_cell` on the Kaggle kernel and forwards every cell to an external Jupyter kernel you control |
+| `kagglet.api`      | `Kaggle` — facade over the kaggle SDK with kernel/model methods and `parallel_uploads()` (monkey-patches `upload_files` for concurrent uploads); `kaggle()` returns a cached, authenticated singleton |
 | `kagglet.stream`   | `stream_logs()` — real-time kernel logs via Firebase SSE (browser-cookie auth) |
 
-`relay` and `stream` require optional deps: `pip install 'kagglet[relay,stream]'`.
+`stream` requires optional deps: `pip install 'kagglet[stream]'`.
 
 ## Minimal example
 
@@ -61,31 +57,11 @@ stream_logs("your-owner/my-nb", cookies=cookies_from_chrome())
 On non-Linux or non-Chrome setups, pass `cookies={...}` yourself (see
 `kagglet.stream.KAGGLE_COOKIE_NAMES` for the required names).
 
-## Relay session
-
-Install a Jupyter kernelspec from your pixi/conda env into the Kaggle kernel's
-search path, then:
-
-```python
-import pathlib
-from kagglet.relay import RelaySession
-
-relay = RelaySession(
-    "my-kernel",
-    cwd=pathlib.Path("/kaggle/working/project"),
-    cleanup_paths=[pathlib.Path("/kaggle/working/project/.pixi")],
-)
-relay.start()
-# subsequent cells now execute inside `my-kernel`
-# ...
-relay.cleanup()
-```
-
 ## Install
 
 ```bash
-pip install kagglet                 # core
-pip install 'kagglet[relay,stream]' # with optional features
+pip install kagglet            # core
+pip install 'kagglet[stream]'  # with optional log-streaming deps
 ```
 
 Or with pixi:

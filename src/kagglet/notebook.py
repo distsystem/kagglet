@@ -9,17 +9,15 @@
 `push()` uploads the current notebook. `poll()` waits for completion + prints logs.
 """
 
+import glob as _glob
+import json
 import time
 import pathlib
 
 import pydantic
 
-from kagglet.model import KaggleModel
-from kagglet.kernel import KaggleKernel
-from kagglet.dataset import KaggleDataset
-from kagglet.api.meta import KernelMeta
-from kagglet.api.client import kaggle_api
-from kagglet.api.kernels import push_kernel, fetch_kernel_logs, poll_kernel_terminal
+from kagglet.api import kaggle
+from kagglet.assets import KaggleModel, KaggleKernel, KaggleDataset
 
 _JUPYTEXT_HEADER = """\
 # ---
@@ -53,6 +51,10 @@ def _normalize_notebook_for_kaggle(nb):
     nb.nbformat_minor = 4
     for cell in nb.cells:
         cell.pop("id", None)
+        if cell.get("cell_type") == "code" and "outputs" in cell:
+            cell["outputs"] = []
+        if isinstance(cell.get("source"), list):
+            cell["source"] = "".join(cell["source"])
     return nb
 
 
@@ -67,7 +69,9 @@ class NotebookProject(pydantic.BaseModel):
     """Local notebook project spec.
 
     `sources` are paths to percent-format `.py` fragments concatenated to form
-    the notebook. Paths are resolved against `sources_dir` if relative.
+    the notebook. Paths are resolved against `sources_dir` if relative; entries
+    containing glob characters (`*`, `?`, `[`) expand to their sorted matches
+    under `sources_dir` and must match at least one file.
     """
 
     model_config = pydantic.ConfigDict(extra="forbid")
@@ -97,11 +101,18 @@ class NotebookProject(pydantic.BaseModel):
     def datasets(self) -> list[KaggleDataset]:
         return [d for d in self.deps if isinstance(d, KaggleDataset)]
 
-    @property
-    def metadata(self) -> KernelMeta:
-        meta = self.kernel.metadata
-        meta.dataset_sources = [*meta.dataset_sources, *(d.slug for d in self.datasets)]
-        return meta
+    def save_request(self, text: str = ""):
+        """Build the static `ApiSaveKernelRequest`: kernel fields + dataset deps merged in.
+
+        Model deps are not fetched here (they need network and version polling); `push()`
+        appends them after `wait_ready`.
+        """
+        request = self.kernel.save_request(text)
+        request.dataset_data_sources = [
+            *request.dataset_data_sources,
+            *(d.slug for d in self.datasets),
+        ]
+        return request
 
     def plan(self, force: bool = False, timeout: int = 600) -> list["NotebookProject"]:
         """Walk deps, upload any stale KaggleModel, return notebooks whose outputs need rebuild."""
@@ -145,23 +156,24 @@ class NotebookProject(pydantic.BaseModel):
 
     def push(self):
         """Build notebook from sources, upload as a new kernel version."""
-        meta = self.metadata
-        model_sources = list(meta.model_sources or [])
-        if self.inputs:
-            for m in self.inputs:
-                if m.version <= 0:
-                    m.fetch()
-                model_sources.append(f"{m.slug}/{m.version}")
-                if not m.wait_ready(timeout=600):
-                    raise RuntimeError(f"timeout waiting for {m.slug}/{m.version}")
-        if model_sources:
-            meta.model_sources = model_sources
-
         nb = percent_to_notebook(self._build_source())
-        meta_json = meta.to_json()
-        print(meta_json)
-        result = push_kernel(kaggle_api(), meta_json, nb)
-        print(f"kernel version {result.versionNumber} pushed: {result.ref}")
+        request = self.save_request(json.dumps(nb))
+        model_sources = list(request.model_data_sources)
+        for m in self.inputs:
+            if m.version <= 0:
+                m.fetch()
+            model_sources.append(f"{m.slug}/{m.version}")
+            if not m.wait_ready(timeout=600):
+                raise RuntimeError(f"timeout waiting for {m.slug}/{m.version}")
+        request.model_data_sources = model_sources
+
+        print(
+            f"pushing {request.slug}: title={request.new_title!r} "
+            f"machine={request.machine_shape or 'cpu'} internet={request.enable_internet} "
+            f"datasets={request.dataset_data_sources} models={request.model_data_sources}"
+        )
+        response = kaggle().push_kernel(request)
+        print(f"kernel version {response.version_number} pushed: {response.ref}")
 
     def _resolve_source(self, source: str | pathlib.Path) -> pathlib.Path:
         path = pathlib.Path(source)
@@ -174,12 +186,29 @@ class NotebookProject(pydantic.BaseModel):
             )
         return self.sources_dir / path
 
+    def _expand_sources(self) -> list[pathlib.Path]:
+        paths: list[pathlib.Path] = []
+        for s in self.sources:
+            if _glob.has_magic(s):
+                if self.sources_dir is None:
+                    raise ValueError(
+                        f"sources_dir not set but source {s!r} is a glob; "
+                        "set NotebookProject(sources_dir=...)"
+                    )
+                matches = sorted(self.sources_dir.glob(s))
+                if not matches:
+                    raise ValueError(f"glob {s!r} matched no files in {self.sources_dir}")
+                paths.extend(matches)
+            else:
+                paths.append(self._resolve_source(s))
+        return paths
+
     def _build_source(self) -> str:
-        return "\n".join(self._resolve_source(s).read_text() for s in self.sources)
+        return "\n".join(p.read_text() for p in self._expand_sources())
 
     def poll(self, interval: int = 10):
         """Block until kernel finishes, then print the downloaded `.log` files."""
-        api = kaggle_api()
+        api = kaggle()
         t0 = time.monotonic()
 
         def tick(resp):
@@ -187,10 +216,10 @@ class NotebookProject(pydantic.BaseModel):
             mm, ss = divmod(elapsed, 60)
             print(f"\r\033[K{mm:02d}:{ss:02d}  {resp.status}", end="", flush=True)
 
-        resp, status = poll_kernel_terminal(api, self.kernel.slug, interval=interval, on_tick=tick)
+        resp, status = api.poll_kernel_terminal(self.kernel.slug, interval=interval, on_tick=tick)
         print()
 
-        for name, content in fetch_kernel_logs(api, self.kernel.slug):
+        for name, content in api.fetch_kernel_logs(self.kernel.slug):
             print(f"--- {name} ---")
             print(content)
 
